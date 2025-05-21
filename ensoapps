@@ -1,0 +1,113 @@
+console.log(`Enso Autoclear Apps task by Kage (@oxkagee)
+
+██╗  ██╗ █████╗  ██████╗ ███████╗
+██║ ██╔╝██╔══██╗██╔════╝ ██╔════╝
+█████╔╝ ███████║██║  ███╗█████╗  
+██╔═██╗ ██╔══██║██║   ██║██╔══╝  
+██║  ██╗██║  ██║╚██████╔╝███████╗
+╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+`);
+
+
+(async () => {
+  const EXCLUDED_BUTTON_SELECTOR = '.absolute.-right-4.-top-4.flex';
+  const PAGINATION_SELECTOR = 'li.rc-pagination-item';
+  const BUTTON_SELECTOR = 'div[role="button"], button';
+
+  const originalWindowOpen = window.open;
+  window.open = () => {
+    console.warn('Blocked a window.open call');
+    return null;
+  };
+
+  document.querySelectorAll('a[target="_blank"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      console.warn('Blocked a target="_blank" link:', a.href);
+    });
+  });
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function isExcluded(button) {
+    const excludedTexts = ["Supported Protocols", "Apps powered by Enso"];
+    const text = button.textContent?.trim();
+
+    if (excludedTexts.includes(text)) return true;
+    if (button.closest(EXCLUDED_BUTTON_SELECTOR)) return true;
+
+    const svgPath = button.querySelector("svg path")?.getAttribute("d");
+    const prevIconPath = "M15.75 19.5 8.25 12l7.5-7.5";
+    const nextIconPath = "m8.25 4.5 7.5 7.5-7.5 7.5";
+    if (svgPath === prevIconPath || svgPath === nextIconPath) return true;
+
+    const ariaLabel = button.getAttribute("aria-label");
+    if (ariaLabel === "next page" || ariaLabel === "prev page") return true;
+
+    if (button.classList.contains("rc-pagination-item-link")) return true;
+
+    return false;
+  }
+
+  async function clickAllButtons() {
+    const buttons = [...document.querySelectorAll(BUTTON_SELECTOR)].filter(btn => !isExcluded(btn));
+    for (let btn of buttons) {
+      try {
+        btn.click();
+        await sleep(3000);
+      } catch (e) {
+        console.error('Click failed', btn, e);
+      }
+    }
+  }
+
+  async function goThroughAvailableTabs(totalTabs) {
+    const visited = new Set();
+
+    for (let i = 1; i <= totalTabs; i++) {
+      const tab = [...document.querySelectorAll(PAGINATION_SELECTOR)].find(
+        el => el.getAttribute('title') === String(i)
+      );
+
+      if (!tab || visited.has(i)) {
+        console.warn(`❌ Tab ${i} not found or already visited`);
+        continue;
+      }
+
+      console.log(`➡️ Clicking tab ${i}`);
+      tab.click();
+      visited.add(i);
+
+      await sleep(1000);
+      await clickAllButtons();
+      await sleep(1000);
+    }
+  }
+
+  async function runStep(title = null, totalTabs = 1) {
+    if (title) {
+      const btn = [...document.querySelectorAll(BUTTON_SELECTOR)].find(el => el.textContent.trim() === title);
+      if (btn) {
+        console.log(`🔁 Clicking: ${title}`);
+        btn.click();
+        await sleep(1000);
+      } else {
+        console.warn(`❌ Button not found: ${title}`);
+        return;
+      }
+    }
+
+    await goThroughAvailableTabs(totalTabs);
+  }
+
+  // Run "Apps powered by Enso" first - 7 tabs
+  await runStep("Apps powered by Enso", 7);
+
+  // Then run "Supported Protocols" - 12 tabs
+  await runStep("Supported Protocols", 12);
+
+  window.open = originalWindowOpen;
+  console.log("🎉 Done with all views and tabs!");
+})();
