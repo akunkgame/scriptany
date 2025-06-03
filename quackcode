@@ -1,0 +1,120 @@
+(async () => {
+    // --- Konfigurasi ---
+    const charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const codeLength = 4;
+    const delayBetweenAttemptsMs = 1500; // Jeda dalam milidetik
+    const maxAttempts = 10000; // Batas maksimal percobaan
+
+    // --- Selektor Elemen (sesuaikan jika struktur HTML berubah) ---
+    const inputContainerSelector = 'div.MuiStack-root.mui-1k4h2i3';
+    const inputSelector = 'input.MuiInputBase-input.MuiOutlinedInput-input';
+    const errorSelector = 'p.MuiTypography-root.MuiTypography-body1.mui-1eu9isz';
+    const expectedErrorText = "This code doesn’t exist. Check and try again.";
+
+    // --- Fungsi Bantuan ---
+    function generateRandomCode(length, characters) {
+        let result = '';
+        for (let i = 0; i < length; i++) {
+            result += characters.charAt(Math.floor(Math.random() * characters.length));
+        }
+        return result;
+    }
+
+    function setInputValue(inputElement, value) {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+
+        // 1. Fokus pada elemen
+        inputElement.focus();
+
+        // 2. Kosongkan input field
+        nativeInputValueSetter.call(inputElement, '');
+        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        inputElement.dispatchEvent(new Event('change', { bubbles: true })); // Kirim 'change' juga setelah dikosongkan
+
+        // (Catatan: Jeda singkat di sini kadang bisa membantu jika framework sangat reaktif,
+        // tapi akan membuat setInputValue menjadi async dan memperlambat loop pengisian.
+        // Coba dulu tanpa ini.)
+        // Contoh: await delay(10); // Perlu setInputValue jadi async dan di-await
+
+        // 3. Isi dengan nilai baru
+        nativeInputValueSetter.call(inputElement, value);
+        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // 4. Lepas fokus dari elemen
+        inputElement.blur();
+    }
+
+    async function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // --- Logika Utama ---
+    console.log(`Memulai brute-force dengan jeda ${delayBetweenAttemptsMs / 1000} detik antar percobaan...`);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        // !! PENTING: Cari elemen input DI DALAM SETIAP ITERASI LOOP !!
+        // Ini untuk mengatasi jika elemen di-render ulang oleh framework setelah error.
+        const container = document.querySelector(inputContainerSelector);
+        if (!container) {
+            console.error(`Percobaan #${attempt}: Tidak dapat menemukan kontainer input. Mungkin halaman berubah atau selector salah. Menghentikan skrip.`);
+            alert('Kesalahan: Kontainer input tidak ditemukan pada percobaan baru. Lihat konsol untuk detail. Skrip dihentikan.');
+            return;
+        }
+
+        const inputs = container.querySelectorAll(inputSelector);
+        if (inputs.length !== codeLength) {
+            console.error(`Percobaan #${attempt}: Jumlah input field tidak sesuai. Diharapkan ${codeLength}, ditemukan ${inputs.length}. Menghentikan skrip.`);
+            alert(`Kesalahan: Jumlah input field tidak sesuai pada percobaan baru (ditemukan ${inputs.length}). Lihat konsol. Skrip dihentikan.`);
+            return;
+        }
+        // Jika Anda ingin log elemen yang ditemukan setiap percobaan (untuk debugging):
+        // console.log(`Percobaan #${attempt}: Input fields ditemukan:`, inputs);
+
+
+        const code = generateRandomCode(codeLength, charSet);
+        console.log(`Percobaan #${attempt}: Mencoba kode "${code}"`);
+
+        // Memasukkan kode ke setiap input field
+        for (let i = 0; i < codeLength; i++) {
+            if (inputs[i]) {
+                setInputValue(inputs[i], code[i]);
+                // Jika input per karakter sangat lambat, pertimbangkan untuk hanya memanggil
+                // focus() pada input pertama dan blur() pada input terakhir dari grup.
+            } else {
+                // Ini seharusnya tidak terjadi jika pengecekan jumlah input di atas sudah benar
+                console.error(`Percobaan #${attempt}: Input field ke-${i + 1} tidak ditemukan saat loop pengisian. Aneh.`);
+                alert(`Kesalahan kritis: Input field ke-${i + 1} tidak valid pada percobaan #${attempt}. Skrip dihentikan.`);
+                return;
+            }
+        }
+
+        await delay(delayBetweenAttemptsMs); // Jeda setelah semua karakter diinput
+
+        const errorElement = document.querySelector(errorSelector);
+        let isErrorVisibleAndExpected = false;
+        if (errorElement) {
+            isErrorVisibleAndExpected = errorElement.offsetParent !== null && errorElement.textContent.trim() === expectedErrorText;
+        }
+
+        if (isErrorVisibleAndExpected) {
+            console.log(`Kode "${code}" salah. Pesan error: "${errorElement.textContent.trim()}"`);
+        } else {
+            if (errorElement && errorElement.offsetParent !== null) {
+                console.warn(`Kode "${code}" mungkin benar atau status tidak diketahui. Pesan yang terdeteksi: "${errorElement.textContent.trim()}"`);
+                alert(`Kode "${code}" mungkin benar atau status tidak diketahui.\nPesan yang terdeteksi: "${errorElement.textContent.trim()}"\nCek konsol untuk detail.`);
+            } else {
+                console.log(`Kode "${code}" BERHASIL? Pesan error yang diharapkan tidak ditemukan.`);
+                alert(`Kode "${code}" KEMUNGKINAN BERHASIL!\nPesan error tidak terdeteksi.\nSilakan periksa secara manual.`);
+            }
+            console.log("Menghentikan skrip karena kondisi sukses atau status tidak diketahui tercapai.");
+            return;
+        }
+
+        if (attempt === maxAttempts) {
+            console.log('Batas maksimal percobaan tercapai.');
+            alert('Batas maksimal percobaan tercapai. Silakan coba lagi nanti atau periksa skrip.');
+            return;
+        }
+    }
+})();
